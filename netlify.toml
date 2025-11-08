@@ -2,5 +2,9 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# "suggest-hanja" 함수의 제한 시간을 20초로 늘립니다.
+[functions."suggest-hanja"]
+  timeout = 20
+
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
