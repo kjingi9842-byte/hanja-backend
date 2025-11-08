@@ -1,5 +1,6 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
 
+// Google GenAI 라이브러리를 가져옵니다.
 const { GoogleGenAI } = require('@google/genai');
 
 // 환경 변수에서 API 키를 안전하게 불러옵니다.
@@ -22,7 +23,7 @@ exports.handler = async (event) => {
     // ⬇️ --- [CORS 해결] 브라우저의 'OPTIONS' (사전 요청) 처리 --- ⬇️
     if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 204, 
+            statusCode: 204, // "처리할 내용 없음"
             headers: corsHeaders,
             body: '',
         };
@@ -86,25 +87,26 @@ exports.handler = async (event) => {
                         }
                     }
                 }
-            });
+            }
+        });
 
         // AI 응답 처리
         const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-        
+
         return {
             statusCode: 200,
             headers: { 
-                ...corsHeaders, // ⬇️ [CORS 해결] 성공 응답에도 허가증 추가
+                ...corsHeaders, // [CORS 해결] 성공 응답에도 허가증 추가
                 'Content-Type': 'application/json' 
             },
-            body: jsonText 
+            body: jsonText // AI가 생성한 JSON을 그대로 반환
         };
 
     } catch (error) {
         console.error("Gemini API Error:", error);
         return {
             statusCode: 500,
-            headers: corsHeaders, // ⬇️ [CORS 해결] 실패 응답에도 허가증 추가
+            headers: corsHeaders, // [CORS 해결] 실패 응답에도 허가증 추가
             body: JSON.stringify({ message: 'AI 서버 처리 중 오류가 발생했습니다.' })
         };
     }
