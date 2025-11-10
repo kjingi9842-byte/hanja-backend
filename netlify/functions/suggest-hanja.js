@@ -1,5 +1,6 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 제안 개수를 '3개'로 다시 수정한 최종본입니다.
+// 모델 이름을 'gemini-1.5-flash-latest' (최신 공식 모델)로,
+// 제안 개수를 '3개'로 수정한 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -46,8 +47,7 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // 5. AI에게 보낼 지시(프롬프트)
-    // ⬇️ --- [수정됨] 1개를 '3개'로 변경 --- ⬇️
+    // 5. AI에게 보낼 지시(프롬프트) - 어젯밤과 동일한 "3개 제안"
     const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **3개**를 제안하세요.
 
     규칙:
@@ -61,12 +61,13 @@ exports.handler = async (event) => {
     { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
     
     사용자 입력: "${userInput}"`;
-    // ⬆️ --- [수정됨] --- ⬆️
 
     try {
-        // 6. Gemini 모델 호출 (작동하는 모델 이름)
+        // 6. Gemini 모델 호출
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-preview-05-20', 
+            // ⬇️ --- [수정됨] 만료된 모델 대신, '최신' 모델 이름 --- ⬇️
+            model: 'gemini-1.5-flash-latest',
+            // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: "application/json",
