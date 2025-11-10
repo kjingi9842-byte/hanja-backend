@@ -1,5 +1,5 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 404 오류(모델 이름)가 'gemini-2.5-flash-preview-05-20' (원래 작동하던 이름)으로 수정된 최종본입니다.
+// 제안 개수를 '3개'로 다시 수정한 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -46,11 +46,12 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // 5. AI에게 보낼 지시(프롬프트) - 1개만, 한글 금지
-    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **단 1개**만 제안하세요.
+    // 5. AI에게 보낼 지시(프롬프트)
+    // ⬇️ --- [수정됨] 1개를 '3개'로 변경 --- ⬇️
+    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **3개**를 제안하세요.
 
     규칙:
-    1.  제안은 **단 1개**여야 합니다.
+    1.  제안은 **3개**여야 합니다.
     2.  'hanja' 필드에는 **반드시 한자(漢字)**만 포함되어야 합니다. (예: "愛情"). **절대로 한글("사랑")을 반환하지 마세요.**
     3.  각 단어는 한글로 된 간결한 설명이 포함되어야 합니다.
     4.  구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다.
@@ -60,13 +61,12 @@ exports.handler = async (event) => {
     { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
     
     사용자 입력: "${userInput}"`;
+    // ⬆️ --- [수정됨] --- ⬆️
 
     try {
-        // 6. Gemini 모델 호출
+        // 6. Gemini 모델 호출 (작동하는 모델 이름)
         const response = await ai.models.generateContent({
-            // ⬇️ --- [수정됨] 처음에 작동했던 '긴' 모델 이름 --- ⬇️
-            model: 'gemini-2.5-flash-preview-05-20',
-            // ⬆️ --- [수정됨] --- ⬆️
+            model: 'gemini-1.5-flash-preview-05-20', 
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: "application/json",
