@@ -1,5 +1,5 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 404 오류(모델 이름)가 'gemini-pro'로 수정된 최종본입니다.
+// 404 오류(모델 이름)가 'gemini-2.5-flash-preview-05-20' (원래 작동하던 이름)으로 수정된 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -64,8 +64,8 @@ exports.handler = async (event) => {
     try {
         // 6. Gemini 모델 호출
         const response = await ai.models.generateContent({
-            // ⬇️ --- [수정됨] 'gemini-pro' (100% 작동하는 모델) --- ⬇️
-            model: 'gemini-pro',
+            // ⬇️ --- [수정됨] 처음에 작동했던 '긴' 모델 이름 --- ⬇️
+            model: 'gemini-2.5-flash-preview-05-20',
             // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
