@@ -1,35 +1,37 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
+// 404 오류(모델 이름)가 수정된 최종본입니다.
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
+// 환경 변수에서 API 키를 안전하게 불러옵니다.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
+// CORS 허용 헤더 (모든 도메인 허용)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// 한자 검증 함수
-function isValidHanja(text) {
-    const hanjaRegex = /^[\u4E00-\u9FFF]+$/;
-    return hanjaRegex.test(text);
-}
-
+// Netlify Functions의 기본 핸들러
 exports.handler = async (event) => {
+
+    // 1. 브라우저의 'OPTIONS' (사전 요청) 처리
     if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 204,
+            statusCode: 204, 
             headers: corsHeaders,
             body: '',
         };
     }
 
+    // 2. POST 요청이 아닌 경우 차단
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, headers: corsHeaders, body: 'Method Not Allowed' };
     }
 
+    // 3. 요청 본문(body) 파싱
     let body;
     try {
         body = JSON.parse(event.body);
@@ -39,124 +41,79 @@ exports.handler = async (event) => {
 
     const userInput = body.userInput;
 
+    // 4. 입력값 및 API 키 확인
     if (!userInput || !GEMINI_API_KEY) {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    const prompt = `You are a Korean-to-Hanja translation expert.
+    // 5. AI에게 보낼 지시(프롬프트)
+    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **단 1개**만 제안하세요.
 
-User input: "${userInput}"
-
-CRITICAL RULES:
-1. The "hanja" field MUST contain ONLY Chinese characters (漢字), NOT Korean Hangul
-2. Each character in "hanja" MUST be from Unicode range U+4E00-U+9FFF
-3. Suggest exactly 3 two-character Hanja words
-4. Provide Korean readings (eum) and meanings in Korean for the "meaning", "eum", and character "meaning" fields
-
-Examples:
-✓ CORRECT: "hanja": "勤勉" (Chinese characters)
-✗ WRONG: "hanja": "근면" (Korean Hangul - DO NOT USE)
-
-If input is not Korean, return empty suggestions array with appropriate message.
-
-Output must be valid JSON following this exact schema:
-{
-  "original_text": "${userInput}",
-  "suggestions": [
-    {
-      "hanja": "勤勉",
-      "meaning": "부지런하고 힘씀",
-      "characters": [
-        {"character": "勤", "eum": "근", "meaning": "부지런할"},
-        {"character": "勉", "eum": "면", "meaning": "힘쓸"}
-      ]
-    }
-  ]
-}`;
+    규칙:
+    1.  제안은 **단 1개**여야 합니다.
+    2.  'hanja' 필드에는 **반드시 한자(漢字)**만 포함되어야 합니다. (예: "愛情"). **절대로 한글("사랑")을 반환하지 마세요.**
+    3.  각 단어는 한글로 된 간결한 설명이 포함되어야 합니다.
+    4.  구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다.
+    5.  만약 적절한 한자를 찾지 못하거나, 입력이 한국어가 아니라면, 'suggestions' 배열을 빈 배열( [ ] )로 반환하세요.
+    
+    출력은 반드시 다음 JSON 스키마를 따르는 유효한 JSON 객체여야 합니다:
+    { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
+    
+    사용자 입력: "${userInput}"`;
 
     try {
-        const model = genAI.getGenerativeModel({ 
-            model: 'gemini-1.5-flash-latest',
-            generationConfig: {
-                temperature: 0.3,
+        // 6. Gemini 모델 호출
+        const response = await ai.models.generateContent({
+            // ⬇️ --- [수정됨] 'latest'를 제거한 올바른 모델 이름 --- ⬇️
+            model: 'gemini-1.5-flash',
+            // ⬆️ --- [수정됨] --- ⬆️
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: "object",
+                    type: "OBJECT",
                     properties: {
-                        original_text: { type: "string" },
-                        suggestions: {
-                            type: "array",
+                        "original_text": { "type": "STRING" },
+                        "suggestions": {
+                            type: "ARRAY",
                             items: {
-                                type: "object",
+                                type: "OBJECT",
                                 properties: {
-                                    hanja: { 
-                                        type: "string",
-                                        description: "MUST be Chinese characters only (U+4E00-U+9FFF)"
-                                    },
-                                    meaning: { type: "string" },
-                                    characters: {
-                                        type: "array",
+                                    "hanja": { "type": "STRING" },
+                                    "meaning": { "type": "STRING" },
+                                    "characters": {
+                                        type: "ARRAY",
                                         items: {
-                                            type: "object",
+                                            type: "OBJECT",
                                             properties: {
-                                                character: { 
-                                                    type: "string",
-                                                    description: "Single Chinese character"
-                                                },
-                                                eum: { type: "string" },
-                                                meaning: { type: "string" }
-                                            },
-                                            required: ["character", "eum", "meaning"]
+                                                "character": { "type": "STRING" },
+                                                "eum": { "type": "STRING" },
+                                                "meaning": { "type": "STRING" }
+                                            }
                                         }
                                     }
-                                },
-                                required: ["hanja", "meaning", "characters"]
+                                }
                             }
-                        },
-                        message: { type: "string" }
-                    },
-                    required: ["original_text", "suggestions"]
+                        }
+                    }
                 }
             }
         });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const jsonText = response.text();
-        const parsedResult = JSON.parse(jsonText);
-
-        // ✅ 한자 검증 추가
-        if (parsedResult.suggestions && parsedResult.suggestions.length > 0) {
-            parsedResult.suggestions = parsedResult.suggestions.filter(suggestion => {
-                if (!isValidHanja(suggestion.hanja)) {
-                    console.warn(`Invalid hanja detected: ${suggestion.hanja}`);
-                    return false;
-                }
-                
-                if (suggestion.characters) {
-                    suggestion.characters = suggestion.characters.filter(char => 
-                        isValidHanja(char.character)
-                    );
-                }
-                
-                return suggestion.characters && suggestion.characters.length > 0;
-            });
-
-            if (parsedResult.suggestions.length === 0) {
-                parsedResult.message = "AI가 한글로 응답했습니다. 다시 시도해주세요.";
-            }
-        }
-
+        // 7. AI 응답 처리
+        const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+        
         return {
             statusCode: 200,
             headers: { 
                 ...corsHeaders,
                 'Content-Type': 'application/json' 
             },
-            body: JSON.stringify(parsedResult)
+            body: jsonText 
         };
 
     } catch (error) {
+        // 8. 오류 발생 시 로그 기록 및 응답
         console.error("Gemini API Error:", error);
         return {
             statusCode: 500,
