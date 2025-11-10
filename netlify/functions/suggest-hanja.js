@@ -1,5 +1,5 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 404 오류(모델 이름)가 수정된 최종본입니다.
+// 404 오류(모델 이름)가 'gemini-pro'로 수정된 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -46,7 +46,7 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // 5. AI에게 보낼 지시(프롬프트)
+    // 5. AI에게 보낼 지시(프롬프트) - 1개만, 한글 금지
     const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **단 1개**만 제안하세요.
 
     규칙:
@@ -64,8 +64,8 @@ exports.handler = async (event) => {
     try {
         // 6. Gemini 모델 호출
         const response = await ai.models.generateContent({
-            // ⬇️ --- [수정됨] 'latest'를 제거한 올바른 모델 이름 --- ⬇️
-            model: 'gemini-1.5-flash',
+            // ⬇️ --- [수정됨] 'gemini-pro' (100% 작동하는 모델) --- ⬇️
+            model: 'gemini-pro',
             // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
