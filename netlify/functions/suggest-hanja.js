@@ -1,9 +1,9 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
 
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +13,6 @@ const corsHeaders = {
 
 // 한자 검증 함수
 function isValidHanja(text) {
-    // 한자 유니코드 범위: U+4E00–U+9FFF
     const hanjaRegex = /^[\u4E00-\u9FFF]+$/;
     return hanjaRegex.test(text);
 }
@@ -44,7 +43,6 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // ✅ 개선된 프롬프트 (영어로 명확하게 지시)
     const prompt = `You are a Korean-to-Hanja translation expert.
 
 User input: "${userInput}"
@@ -77,37 +75,36 @@ Output must be valid JSON following this exact schema:
 }`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-exp',
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                temperature: 0.3, // 일관성 향상
+        const model = genAI.getGenerativeModel({ 
+            model: 'gemini-1.5-flash',
+            generationConfig: {
+                temperature: 0.3,
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: "OBJECT",
+                    type: "object",
                     properties: {
-                        "original_text": { "type": "STRING" },
-                        "suggestions": {
-                            type: "ARRAY",
+                        original_text: { type: "string" },
+                        suggestions: {
+                            type: "array",
                             items: {
-                                type: "OBJECT",
+                                type: "object",
                                 properties: {
-                                    "hanja": { 
-                                        "type": "STRING",
-                                        "description": "MUST be Chinese characters only (U+4E00-U+9FFF)"
+                                    hanja: { 
+                                        type: "string",
+                                        description: "MUST be Chinese characters only (U+4E00-U+9FFF)"
                                     },
-                                    "meaning": { "type": "STRING" },
-                                    "characters": {
-                                        type: "ARRAY",
+                                    meaning: { type: "string" },
+                                    characters: {
+                                        type: "array",
                                         items: {
-                                            type: "OBJECT",
+                                            type: "object",
                                             properties: {
-                                                "character": { 
-                                                    "type": "STRING",
-                                                    "description": "Single Chinese character"
+                                                character: { 
+                                                    type: "string",
+                                                    description: "Single Chinese character"
                                                 },
-                                                "eum": { "type": "STRING" },
-                                                "meaning": { "type": "STRING" }
+                                                eum: { type: "string" },
+                                                meaning: { type: "string" }
                                             },
                                             required: ["character", "eum", "meaning"]
                                         }
@@ -116,26 +113,26 @@ Output must be valid JSON following this exact schema:
                                 required: ["hanja", "meaning", "characters"]
                             }
                         },
-                        "message": { "type": "STRING" }
+                        message: { type: "string" }
                     },
                     required: ["original_text", "suggestions"]
                 }
             }
         });
 
-        const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-        const result = JSON.parse(jsonText);
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const jsonText = response.text();
+        const parsedResult = JSON.parse(jsonText);
 
         // ✅ 한자 검증 추가
-        if (result.suggestions && result.suggestions.length > 0) {
-            result.suggestions = result.suggestions.filter(suggestion => {
-                // hanja 필드가 실제 한자인지 확인
+        if (parsedResult.suggestions && parsedResult.suggestions.length > 0) {
+            parsedResult.suggestions = parsedResult.suggestions.filter(suggestion => {
                 if (!isValidHanja(suggestion.hanja)) {
-                    console.warn(`Invalid hanja detected: ${suggestion.hanja} (contains Korean or invalid characters)`);
+                    console.warn(`Invalid hanja detected: ${suggestion.hanja}`);
                     return false;
                 }
                 
-                // 각 character도 검증
                 if (suggestion.characters) {
                     suggestion.characters = suggestion.characters.filter(char => 
                         isValidHanja(char.character)
@@ -145,9 +142,8 @@ Output must be valid JSON following this exact schema:
                 return suggestion.characters && suggestion.characters.length > 0;
             });
 
-            // 유효한 한자 제안이 하나도 없으면 에러 메시지
-            if (result.suggestions.length === 0) {
-                result.message = "AI가 한글로 응답했습니다. 다시 시도해주세요.";
+            if (parsedResult.suggestions.length === 0) {
+                parsedResult.message = "AI가 한글로 응답했습니다. 다시 시도해주세요.";
             }
         }
 
@@ -157,7 +153,7 @@ Output must be valid JSON following this exact schema:
                 ...corsHeaders,
                 'Content-Type': 'application/json' 
             },
-            body: JSON.stringify(result)
+            body: JSON.stringify(parsedResult)
         };
 
     } catch (error) {
