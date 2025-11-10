@@ -1,36 +1,32 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
 
-// Google GenAI 라이브러리를 가져옵니다.
 const { GoogleGenAI } = require('@google/genai');
 
-// 환경 변수에서 API 키를 안전하게 불러옵니다.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-
-// GoogleGenAI 인스턴스 초기화
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-// ⬇️ --- [CORS 해결] 허용할 헤더 목록 --- ⬇️
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // '*'는 "모든 도메인"을 허용한다는 뜻입니다.
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
-// ⬆️ --- [CORS 해결] --- ⬆️
 
-// Netlify Functions의 기본 핸들러
+// 한자 검증 함수
+function isValidHanja(text) {
+    // 한자 유니코드 범위: U+4E00–U+9FFF
+    const hanjaRegex = /^[\u4E00-\u9FFF]+$/;
+    return hanjaRegex.test(text);
+}
+
 exports.handler = async (event) => {
-
-    // ⬇️ --- [CORS 해결] 브라우저의 'OPTIONS' (사전 요청) 처리 --- ⬇️
     if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 204, // "처리할 내용 없음"
+            statusCode: 204,
             headers: corsHeaders,
             body: '',
         };
     }
-    // ⬆️ --- [CORS 해결] --- ⬆️
 
-    // 1. POST 요청이 아닌 경우 차단 (기존 코드)
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, headers: corsHeaders, body: 'Method Not Allowed' };
     }
@@ -48,17 +44,44 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // --- AI 요청 프롬프트 ---
-    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합한 2글자 한문 단어 3개를 제안하세요. 각 단어는 한글로 된 간결한 설명이 포함되어야 하며, 구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다. 출력은 반드시 다음 JSON 스키마를 따르는 유효한 JSON 객체여야 합니다: { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }.
-    만약 입력이 한국어가 아니라면, 'suggestions' 필드는 빈 배열이어야 하고, 'message' 필드는 입력이 한국어가 아님을 설명하고 가능하다면 적절한 한문 단어를 제안해야 합니다.
-    사용자 입력: "${userInput}"`;
+    // ✅ 개선된 프롬프트 (영어로 명확하게 지시)
+    const prompt = `You are a Korean-to-Hanja translation expert.
+
+User input: "${userInput}"
+
+CRITICAL RULES:
+1. The "hanja" field MUST contain ONLY Chinese characters (漢字), NOT Korean Hangul
+2. Each character in "hanja" MUST be from Unicode range U+4E00-U+9FFF
+3. Suggest exactly 3 two-character Hanja words
+4. Provide Korean readings (eum) and meanings in Korean for the "meaning", "eum", and character "meaning" fields
+
+Examples:
+✓ CORRECT: "hanja": "勤勉" (Chinese characters)
+✗ WRONG: "hanja": "근면" (Korean Hangul - DO NOT USE)
+
+If input is not Korean, return empty suggestions array with appropriate message.
+
+Output must be valid JSON following this exact schema:
+{
+  "original_text": "${userInput}",
+  "suggestions": [
+    {
+      "hanja": "勤勉",
+      "meaning": "부지런하고 힘씀",
+      "characters": [
+        {"character": "勤", "eum": "근", "meaning": "부지런할"},
+        {"character": "勉", "eum": "면", "meaning": "힘쓸"}
+      ]
+    }
+  ]
+}`;
 
     try {
-        // Gemini 모델 호출
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-preview-05-20',
+            model: 'gemini-2.0-flash-exp',
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
+                temperature: 0.3, // 일관성 향상
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: "OBJECT",
@@ -69,44 +92,79 @@ exports.handler = async (event) => {
                             items: {
                                 type: "OBJECT",
                                 properties: {
-                                    "hanja": { "type": "STRING" },
+                                    "hanja": { 
+                                        "type": "STRING",
+                                        "description": "MUST be Chinese characters only (U+4E00-U+9FFF)"
+                                    },
                                     "meaning": { "type": "STRING" },
                                     "characters": {
                                         type: "ARRAY",
                                         items: {
                                             type: "OBJECT",
                                             properties: {
-                                                "character": { "type": "STRING" },
+                                                "character": { 
+                                                    "type": "STRING",
+                                                    "description": "Single Chinese character"
+                                                },
                                                 "eum": { "type": "STRING" },
                                                 "meaning": { "type": "STRING" }
-                                            }
+                                            },
+                                            required: ["character", "eum", "meaning"]
                                         }
                                     }
-                                }
+                                },
+                                required: ["hanja", "meaning", "characters"]
                             }
-                        }
-                    }
+                        },
+                        "message": { "type": "STRING" }
+                    },
+                    required: ["original_text", "suggestions"]
                 }
             }
         });
 
-        // AI 응답 처리
         const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+        const result = JSON.parse(jsonText);
+
+        // ✅ 한자 검증 추가
+        if (result.suggestions && result.suggestions.length > 0) {
+            result.suggestions = result.suggestions.filter(suggestion => {
+                // hanja 필드가 실제 한자인지 확인
+                if (!isValidHanja(suggestion.hanja)) {
+                    console.warn(`Invalid hanja detected: ${suggestion.hanja} (contains Korean or invalid characters)`);
+                    return false;
+                }
+                
+                // 각 character도 검증
+                if (suggestion.characters) {
+                    suggestion.characters = suggestion.characters.filter(char => 
+                        isValidHanja(char.character)
+                    );
+                }
+                
+                return suggestion.characters && suggestion.characters.length > 0;
+            });
+
+            // 유효한 한자 제안이 하나도 없으면 에러 메시지
+            if (result.suggestions.length === 0) {
+                result.message = "AI가 한글로 응답했습니다. 다시 시도해주세요.";
+            }
+        }
 
         return {
             statusCode: 200,
             headers: { 
-                ...corsHeaders, // [CORS 해결] 성공 응답에도 허가증 추가
+                ...corsHeaders,
                 'Content-Type': 'application/json' 
             },
-            body: jsonText // AI가 생성한 JSON을 그대로 반환
+            body: JSON.stringify(result)
         };
 
     } catch (error) {
         console.error("Gemini API Error:", error);
         return {
             statusCode: 500,
-            headers: corsHeaders, // [CORS 해결] 실패 응답에도 허가증 추가
+            headers: corsHeaders,
             body: JSON.stringify({ message: 'AI 서버 처리 중 오류가 발생했습니다.' })
         };
     }
