@@ -1,6 +1,6 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 모델 이름: gemini-2.5-flash-preview-05-20 (작동하던 모델)
-// 제안 개수: 3개 (사용자 요청)
+// 'OPTIONS' 핸들러, 'gemini-2.5-flash-preview-05-20' (작동하던 모델),
+// '3개 제안'이 모두 포함된 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -18,14 +18,16 @@ const corsHeaders = {
 // Netlify Functions의 기본 핸들러
 exports.handler = async (event) => {
 
-    // 1. 브라우저의 'OPTIONS' (사전 요청) 처리
+    // ⬇️ --- [가장 중요!] 1. 브라우저의 'OPTIONS' (사전 요청) 처리 --- ⬇️
+    // 이 코드가 '출입 허가증'을 발급합니다.
     if (event.httpMethod === 'OPTIONS') {
         return {
-            statusCode: 204, 
+            statusCode: 204, // "처리할 내용 없음"
             headers: corsHeaders,
             body: '',
         };
     }
+    // ⬆️ --- [가장 중요!] --- ⬆️
 
     // 2. POST 요청이 아닌 경우 차단
     if (event.httpMethod !== 'POST') {
@@ -47,8 +49,7 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // 5. AI에게 보낼 지시(프롬프트)
-    // ⬇️ --- [수정됨] 3개 제안, 예시 문구 삭제 --- ⬇️
+    // 5. AI에게 보낼 지시(프롬프트) - 3개 제안, 예시 문구 삭제
     const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **3개**를 제안하세요.
 
     규칙:
@@ -62,14 +63,11 @@ exports.handler = async (event) => {
     { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
     
     사용자 입력: "${userInput}"`;
-    // ⬆️ --- [수정됨] --- ⬆️
 
     try {
-        // 6. Gemini 모델 호출
+        // 6. Gemini 모델 호출 (어제 유일하게 작동했던 모델)
         const response = await ai.models.generateContent({
-            // ⬇️ --- [수정됨] 원래 작동하던 '긴' 모델 이름 --- ⬇️
             model: 'gemini-2.5-flash-preview-05-20',
-            // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: "application/json",
@@ -120,3 +118,8 @@ exports.handler = async (event) => {
         console.error("Gemini API Error:", error);
         return {
             statusCode: 500,
+            headers: corsHeaders,
+            body: JSON.stringify({ message: 'AI 서버 처리 중 오류가 발생했습니다.' })
+        };
+    }
+};
