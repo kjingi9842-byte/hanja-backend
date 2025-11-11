@@ -1,6 +1,7 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 'OPTIONS' 핸들러, 'gemini-2.5-flash-preview-05-20' (작동하던 모델),
-// '3개 제안'이 모두 포함된 최종본입니다.
+// 'OPTIONS' 핸들러 (CORS 해결),
+// 'gemini-2.5-flash-preview-05-20' (유일하게 작동했던 모델),
+// '3개 제안' (사용자 요청)이 모두 포함된 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -18,8 +19,8 @@ const corsHeaders = {
 // Netlify Functions의 기본 핸들러
 exports.handler = async (event) => {
 
-    // ⬇️ --- [가장 중요!] 1. 브라우저의 'OPTIONS' (사전 요청) 처리 --- ⬇️
-    // 이 코드가 '출입 허가증'을 발급합니다.
+    // 1. 브라우저의 'OPTIONS' (사전 요청) 처리
+    // 이 코드가 'CORS 오류'를 막는 '출입 허가증'을 발급합니다.
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 204, // "처리할 내용 없음"
@@ -27,7 +28,6 @@ exports.handler = async (event) => {
             body: '',
         };
     }
-    // ⬆️ --- [가장 중요!] --- ⬆️
 
     // 2. POST 요청이 아닌 경우 차단
     if (event.httpMethod !== 'POST') {
