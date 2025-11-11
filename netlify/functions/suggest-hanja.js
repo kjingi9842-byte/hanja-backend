@@ -1,27 +1,42 @@
 exports.handler = async (event) => {
+  // CORS 헤더 강화
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept, Origin',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+    'Access-Control-Max-Age': '86400',
     'Content-Type': 'application/json'
   };
 
+  // Preflight 요청 처리
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+    return { 
+      statusCode: 204,
+      headers,
+      body: ''
+    };
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+    return { 
+      statusCode: 405, 
+      headers,
+      body: JSON.stringify({ error: 'Method Not Allowed' })
+    };
   }
 
   try {
-    const { userInput } = JSON.parse(event.body);  // userInput으로 받기
+    const { text } = JSON.parse(event.body || '{}');
     
-    if (!userInput || userInput.trim().length === 0) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: '텍스트를 입력해주세요.' }) };
+    if (!text || text.trim().length === 0) {
+      return { 
+        statusCode: 400, 
+        headers, 
+        body: JSON.stringify({ error: '텍스트를 입력해주세요.' }) 
+      };
     }
 
-    console.log('요청:', userInput);
+    console.log('요청:', text);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -35,51 +50,25 @@ exports.handler = async (event) => {
         max_tokens: 1500,
         messages: [{
           role: 'user',
-          content: `한국어 문장 "${userInput}"의 의미를 담은 2글자 한자어를 3-5개 추천해주세요.
+          content: `한국어 문장 "${text}"의 의미를 담은 2글자 한자어를 3-5개 추천해주세요.
 
 응답 형식 (JSON만):
 {
   "suggestions": [
     {
-      "hanja": "漢字",
-      "meaning": "전체 의미 설명",
+      "hanja": "不屈",
+      "meaning": "굽히지 않는 의지",
       "characters": [
-        {"character": "漢", "eum": "한", "meaning": "한나라"},
-        {"character": "字", "eum": "자", "meaning": "글자"}
+        {"character": "不", "eum": "불", "meaning": "아니다"},
+        {"character": "屈", "eum": "굴", "meaning": "굽히다"}
       ]
     }
   ]
-}
-
-반드시 위 형식의 JSON만 출력하세요.`
+}`
         }]
       })
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let content = data.content[0].text.trim();
-    
-    const match = content.match(/\{[\s\S]*\}/);
-    if (match) content = match[0];
-    
-    const result = JSON.parse(content);
-
-    return { statusCode: 200, headers, body: JSON.stringify(result) };
-
-  } catch (error) {
-    console.error('에러:', error.message);
-    return { 
-      statusCode: 500, 
-      headers, 
-      body: JSON.stringify({ 
-        error: '오류 발생',
-        message: error.message,
-        suggestions: [] 
-      }) 
-    };
-  }
-};
+      const errorText = await response.text();
+      console.error('Claude API 에러:', response
