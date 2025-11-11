@@ -1,5 +1,7 @@
 {
-  "name": "hanja-backend",
+  "name": "hanja-backend-functions",
   "version": "1.0.0",
-  "dependencies": {}
+  "dependencies": {
+    "@google/genai": "latest"
+  }
 }
