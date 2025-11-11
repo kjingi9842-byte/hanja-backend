@@ -1,6 +1,6 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 모델 이름을 'gemini-2.5-flash-preview-05-20' (작동하던 모델)로,
-// 제안 개수를 '1개'로 수정한 최종본입니다.
+// 모델 이름: gemini-2.5-flash-preview-05-20 (작동하던 모델)
+// 제안 개수: 3개 (사용자 요청)
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -47,25 +47,29 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
     }
 
-    // 5. AI에게 보낼 지시(프롬프트) - 1개만, 한글 금지
-    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **단 1개**만 제안하세요.
+    // 5. AI에게 보낼 지시(프롬프트)
+    // ⬇️ --- [수정됨] 3개 제안, 예시 문구 삭제 --- ⬇️
+    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **3개**를 제안하세요.
 
     규칙:
-    1.  제안은 **단 1개**여야 합니다.
+    1.  제안은 **3개**여야 합니다.
     2.  'hanja' 필드에는 **반드시 한자(漢字)**만 포함되어야 합니다. (예: "愛情"). **절대로 한글("사랑")을 반환하지 마세요.**
     3.  각 단어는 한글로 된 간결한 설명이 포함되어야 합니다.
     4.  구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다.
     5.  만약 적절한 한자를 찾지 못하거나, 입력이 한국어가 아니라면, 'suggestions' 배열을 빈 배열( [ ] )로 반환하세요.
-
+    
     출력은 반드시 다음 JSON 스키마를 따르는 유효한 JSON 객체여야 합니다:
     { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
-
+    
     사용자 입력: "${userInput}"`;
+    // ⬆️ --- [수정됨] --- ⬆️
 
     try {
-        // 6. Gemini 모델 호출 (어제 유일하게 작동했던 모델)
+        // 6. Gemini 모델 호출
         const response = await ai.models.generateContent({
+            // ⬇️ --- [수정됨] 원래 작동하던 '긴' 모델 이름 --- ⬇️
             model: 'gemini-2.5-flash-preview-05-20',
+            // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: "application/json",
@@ -101,7 +105,7 @@ exports.handler = async (event) => {
 
         // 7. AI 응답 처리
         const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-
+        
         return {
             statusCode: 200,
             headers: { 
@@ -112,13 +116,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        // 8. 오류 발생 시 로그 기록 및 응답
+        // 8. 오류 발생 시 로그 기록 및 응답 (503 과부하 포함)
         console.error("Gemini API Error:", error);
-        // 503(과부하) 또는 API키 오류 등이 여기서 잡힙니다.
         return {
             statusCode: 500,
-            headers: corsHeaders,
-            body: JSON.stringify({ message: 'AI 서버 처리 중 오류가 발생했습니다.' })
-        };
-    }
-};
