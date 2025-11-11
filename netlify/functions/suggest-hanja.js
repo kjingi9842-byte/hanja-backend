@@ -1,127 +1,133 @@
-// 파일 경로: netlify/functions/suggest-hanja.js
-// 모델 이름을 'gemini-2.5-flash-preview-05-20' (작동하던 모델)로,
-// 제안 개수를 '3개'로, '예시 문구'를 삭제한 최종본입니다.
+// netlify/functions/suggest-hanja.js
+// Claude API를 사용한 한자 추천 함수
 
-const { GoogleGenAI } = require('@google/genai');
-
-// 환경 변수에서 API 키를 안전하게 불러옵니다.
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-// CORS 허용 헤더 (모든 도메인 허용)
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-// Netlify Functions의 기본 핸들러
 exports.handler = async (event) => {
+  // CORS 헤더 설정
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
+  };
 
-    // 1. 브라우저의 'OPTIONS' (사전 요청) 처리
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204, 
-            headers: corsHeaders,
-            body: '',
-        };
+  // OPTIONS 요청 처리 (CORS preflight)
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
+
+  // POST 요청만 허용
+  if (event.httpMethod !== 'POST') {
+    return { 
+      statusCode: 405, 
+      headers,
+      body: JSON.stringify({ error: 'Method Not Allowed' })
+    };
+  }
+
+  try {
+    // 요청 본문 파싱
+    const { text } = JSON.parse(event.body);
+
+    // 입력 검증
+    if (!text || text.trim().length === 0) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: '텍스트를 입력해주세요.' })
+      };
     }
 
-    // 2. POST 요청이 아닌 경우 차단
-    if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, headers: corsHeaders, body: 'Method Not Allowed' };
+    console.log('한자 추천 요청:', text);
+
+    // Claude API 호출
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022', // 빠르고 저렴한 모델
+        max_tokens: 1000,
+        temperature: 0.3, // 일관성 있는 결과를 위해 낮은 temperature
+        messages: [{
+          role: 'user',
+          content: `다음 한국어 단어/문구에 가장 적합한 한자 표기를 3-5개 추천해주세요.
+
+입력된 단어: "${text}"
+
+응답 규칙:
+1. 반드시 JSON 형식으로만 출력
+2. 마크다운 코드 블록이나 추가 설명 금지
+3. 각 한자는 실제로 해당 단어에 사용되는 정확한 표기여야 함
+
+JSON 형식:
+{
+  "suggestions": [
+    {
+      "hanja": "漢字",
+      "meaning": "각 글자의 의미와 왜 이 단어에 적합한지 설명"
+    }
+  ]
+}`
+        }]
+      })
+    });
+
+    // API 응답 확인
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Claude API Error:', response.status, errorData);
+      throw new Error(`Claude API 오류: ${response.status}`);
     }
 
-    // 3. 요청 본문(body) 파싱
-    let body;
-    try {
-        body = JSON.parse(event.body);
-    } catch (error) {
-        return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Invalid JSON' };
-    }
-
-    const userInput = body.userInput;
-
-    // 4. 입력값 및 API 키 확인
-    if (!userInput || !GEMINI_API_KEY) {
-        return { statusCode: 400, headers: corsHeaders, body: 'Bad Request: Missing input or API Key' };
-    }
-
-    // 5. AI에게 보낼 지시(프롬프트)
-    // ⬇️ --- [수정됨] 3개 제안, 예시 문구 삭제 --- ⬇️
-    const prompt = `당신은 한국어-한문 단어 번역 전문가입니다. 사용자의 요청을 이해하고, 가장 적합하다고 생각하는 2글자 한문 단어 **3개**를 제안하세요.
-
-    규칙:
-    1.  제안은 **3개**여야 합니다.
-    2.  'hanja' 필드에는 **반드시 한자(漢字)**만 포함되어야 합니다. (예: "愛情"). **절대로 한글("사랑")을 반환하지 마세요.**
-    3.  각 단어는 한글로 된 간결한 설명이 포함되어야 합니다.
-    4.  구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다.
-    5.  만약 적절한 한자를 찾지 못하거나, 입력이 한국어가 아니라면, 'suggestions' 배열을 빈 배열( [ ] )로 반환하세요.
+    // 응답 파싱
+    const data = await response.json();
+    const content = data.content[0].text.trim();
     
-    출력은 반드시 다음 JSON 스키마를 따르는 유효한 JSON 객체여야 합니다:
-    { "original_text": string, "suggestions": [{ "hanja": string, "meaning": string, "characters": [{ "character": string, "eum": string, "meaning": string }] }] }
+    console.log('Claude 응답:', content.substring(0, 100) + '...');
     
-    사용자 입력: "${userInput}"`;
-    // ⬆️ --- [수정됨] --- ⬆️
-
-    try {
-        // 6. Gemini 모델 호출
-        const response = await ai.models.generateContent({
-            // ⬇️ --- [수정됨] 원래 작동하던 '긴' 모델 이름 --- ⬇️
-            model: 'gemini-2.5-flash-preview-05-20',
-            // ⬆️ --- [수정됨] --- ⬆️
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: "OBJECT",
-                    properties: {
-                        "original_text": { "type": "STRING" },
-                        "suggestions": {
-                            type: "ARRAY",
-                            items: {
-                                type: "OBJECT",
-                                properties: {
-                                    "hanja": { "type": "STRING" },
-                                    "meaning": { "type": "STRING" },
-                                    "characters": {
-                                        type: "ARRAY",
-                                        items: {
-                                            type: "OBJECT",
-                                            properties: {
-                                                "character": { "type": "STRING" },
-                                                "eum": { "type": "STRING" },
-                                                "meaning": { "type": "STRING" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // 7. AI 응답 처리
-        const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        return {
-            statusCode: 200,
-            headers: { 
-                ...corsHeaders,
-                'Content-Type': 'application/json' 
-            },
-            body: jsonText 
-        };
-
-    } catch (error) {
-        // 8. 오류 발생 시 로그 기록 및 응답
-        console.error("Gemini API Error:", error);
-        return {
-            statusCode: 500,
-            headers: corsHeaders,
-            body: JSON.stringify({ message: 'AI 서버 처리 중 오류가 발생했습니다.' })
-        };
+    // JSON 추출 (```json 태그가 있을 경우 제거)
+    let jsonText = content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1];
+    } else {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[0];
+      }
     }
+    
+    // JSON 파싱
+    const result = JSON.parse(jsonText);
+
+    // 결과 검증
+    if (!result.suggestions || !Array.isArray(result.suggestions)) {
+      throw new Error('Invalid response format');
+    }
+
+    console.log('성공:', result.suggestions.length, '개 추천');
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(result)
+    };
+
+  } catch (error) {
+    console.error('Error in suggest-hanja function:', error);
+    
+    // 에러 응답
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: '한자 추천 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        suggestions: [],
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      })
+    };
+  }
 };
