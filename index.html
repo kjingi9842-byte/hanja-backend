@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>한자 추천</title>
+</head>
+<body>
+    <h1>한자 추천 테스트</h1>
+    <input type="text" id="input" placeholder="한국어 입력">
+    <button onclick="suggest()">추천</button>
+    <div id="result"></div>
+
+    <script>
+    async function suggest() {
+        const text = document.getElementById('input').value;
+        const res = await fetch('/.netlify/functions/suggest-hanja', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        const data = await res.json();
+        document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+    </script>
+</body>
+</html>
