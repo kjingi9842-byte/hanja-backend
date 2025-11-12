@@ -1,6 +1,5 @@
 // 파일 경로: netlify/functions/suggest-hanja.js
-// 'gemini-2.5-flash-preview-05-20' (작동하던 모델)
-// '3개 제안'이 모두 포함된 최종본입니다.
+// 모델 이름을 'gemini-pro' (안정적인 표준 모델)로 수정한 최종본입니다.
 
 const { GoogleGenAI } = require('@google/genai');
 
@@ -56,16 +55,18 @@ exports.handler = async (event) => {
     3.  각 단어는 한글로 된 간결한 설명이 포함되어야 합니다.
     4.  구성 한자 각각에 대해 한글로 음과 뜻이 포함되어야 합니다.
     5.  만약 적절한 한자를 찾지 못하거나, 입력이 한국어가 아니라면, 'suggestions' 배열을 빈 배열( [ ] )로 반환하세요.
-
+    
     출력은 반드시 다음 JSON 스키마를 따르는 유효한 JSON 객체여야 합니다:
     { "suggestions": [ { "hanja": "string", "meaning": "string", "characters": [ { "character": "string", "eum": "string", "meaning": "string" } ] } ] }
-
+    
     사용자 입력: "${userInput}"`;
 
     try {
-        // 6. Gemini 모델 호출 (어제 유일하게 작동했던 모델)
+        // 6. Gemini 모델 호출
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-preview-05-20',
+            // ⬇️ --- [수정됨] '대형 본점' 모델 이름 --- ⬇️
+            model: 'gemini-pro',
+            // ⬆️ --- [수정됨] --- ⬆️
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             config: {
                 responseMimeType: "application/json",
@@ -100,7 +101,7 @@ exports.handler = async (event) => {
 
         // 7. AI 응답 처리
         const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
-
+        
         return {
             statusCode: 200,
             headers: { 
@@ -111,7 +112,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        // 8. 오류 발생 시 로그 기록 및 응답 (503 과부하 포함)
+        // 8. 오류 발생 시 로그 기록 및 응답
         console.error("Gemini API Error:", error);
         return {
             statusCode: 500,
