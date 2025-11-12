@@ -2,10 +2,10 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# "suggest-hanja" 함수의 제한 시간을 20초로 늘립니다. (503 과부하 대비)
+# "suggest-hanja" 함수의 제한 시간을 20초로 늘립니다.
 [functions."suggest-hanja"]
   timeout = 20
 
-# 함수 의존성(package.json)을 강제로 설치하는 플러그인
+# 이 플러그인이 package.json의 부품을 강제로 설치합니다.
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
