@@ -1,7 +1,13 @@
 {
-  "name": "hanja-backend-claude",
+  "name": "hanja-backend-gemini",
   "version": "1.0.0",
   "dependencies": {
-    "@anthropic-ai/sdk": "latest"
+    "@google/genai": "latest"
+  }
+}{
+  "name": "hanja-backend-gemini",
+  "version": "1.0.0",
+  "dependencies": {
+    "@google/genai": "latest"
   }
 }
