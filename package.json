@@ -1,7 +1,7 @@
 {
-  "name": "hanja-backend-gemini",
+  "name": "hanja-backend-vertex-ai",
   "version": "1.0.0",
   "dependencies": {
-    "@google/genai": "latest"
+    "@google-cloud/aiplatform": "^3.19.0"
   }
 }
