@@ -1,7 +1,7 @@
 {
-  "name": "hanja-backend-functions",
+  "name": "hanja-backend-claude",
   "version": "1.0.0",
   "dependencies": {
-    "@google/genai": "latest"
+    "@anthropic-ai/sdk": "latest"
   }
 }
